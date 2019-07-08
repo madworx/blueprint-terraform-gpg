@@ -1,6 +1,6 @@
 # Blueprint: git + Terraform + GPG (Yubikey)
 
-_Creating reproducable and tracable infrastructure with git, Terraform, with encrypted secrets secured with Yubikey. (Persisting Terraform state into Amazon S3 + DynamoDB)_
+_Creating reproducible and traceable infrastructure with git, Terraform, with encrypted secrets secured with Yubikey. (Persisting Terraform state into Amazon S3 + DynamoDB)_
 
 ## Table of contents
 
@@ -66,7 +66,7 @@ operations to allow AWS to stabilize.
   token.
 
 * Working `ssh-agent` setup with an available key. (Typically
-  proivded by e.g. Yubikey or other hardware token)
+  provided by e.g., Yubikey or another hardware token)
 
 ### Versioning guidance
 
@@ -82,7 +82,9 @@ versions:
 * Perl 5
 * Yubikey 5
 
-Some of the tools mentioned above are not critical to the setup itself, such as `jq`, `perl` and Yubikey, but if you're not using them you'll need to adapt some of the steps below.
+Some of the tools mentioned above are not critical to the setup
+itself, such as `jq`, `perl`, and Yubikey, but if you're not using
+them, you'll need to adapt some of the steps below.
 
 ## Base setup
 
@@ -114,7 +116,7 @@ If any of the commands fail, start by making sure that you're using a
 recent version of the `awscli` package.
 
 After this, verify that your `awscli` has been setup with proper
-credentials.
+credentials. (`aws configure`)
 
 Verify that your GPG setup works by executing the following command,
 which should output the string "`Works`" (assuming that you have set
@@ -135,12 +137,12 @@ that something is wrong with your GPG setup.
 ## Set up required AWS infrastructure
 
 Since we will be saving the Terraform state to _Amazon S3_, we will
-need to create an _S3 bucket_, as well as an _DynamoDB_ table for
+need to create an _S3 bucket_, as well as a _DynamoDB_ table for
 locking-coordination.
 
 ### Create and configure S3 bucket
 
-#### Create bucket
+#### Create a bucket
 
 We start by creating the S3 bucket in AWS in the desired region
 
@@ -156,7 +158,7 @@ $ aws s3api create-bucket \
 
 We then proceed to disable/block all public access to the bucket and
 its content (this is a relatively new feature in AWS S3, as well as
-the `awscli`; If you receive errors at this stage then you need to
+the `awscli`; If you receive errors at this stage, you need to
 upgrade your `awscli` package):
 
 ``` shell
@@ -174,7 +176,7 @@ $ aws s3api put-public-access-block \
 
 #### Enable bucket versioning
 
-By enabling versioning of bucket contents (i.e. your Terraform
+By enabling versioning of bucket contents (i.e., your Terraform
 state), we are protecting ourselves against accidental deletions/user
 errors. (Restoring a lost Terraform state is a PITA and being able to
 revert possible mistakes is gold):
@@ -185,7 +187,7 @@ $ aws s3api put-bucket-versioning \
         --versioning-configuration Status=Enabled
 ```
 
-(Older versions of the state file can be restored via the AWS Console
+(If you mess up, older versions of the state file are available for restore using the AWS Console
 or the `awscli` utility.)
 
 #### Enable AWS managed encryption on bucket contents
@@ -287,7 +289,7 @@ The file `terraform-backend-variables.txt.gpg` now contains the AWS
 access key and secret key for storing the Terraform state file into
 S3 and use DynamoDB for locking.
 
-To veirfy the contents of the file, you can use the following
+To verify the contents of the file, you can use the following
 command:
 
 `$ gpg --decrypt terraform-backend-variables.json.gpg`
@@ -313,13 +315,12 @@ $ gpg --use-agent --encrypt -r "${GPG_IDENTITY}" > hcloud-variables.json.gpg <<E
 EOT
 ```
 
-(While the SSH public key is not secret in itself, we are including
-it into the encrypted file to have easy access to it later in the
-process)
+(While the SSH public key is not secret in itself, we include it into
+the encrypted file to have easy access to it later in the process)
 
 *Please note*: When Terraform initializes, it will write the contents
 of the `terraform-backend-variables.txt.gpg` file (unencrypted) to
-the file system. We'll adress this later on.
+the file system. We'll address this later on.
 
 ## Using Terraform to provision your infrastructure
 
@@ -328,8 +329,8 @@ the file system. We'll adress this later on.
 Create the Terraform configuration, `hetzner.tf`:
 
 (In the example below, we're using `perl` to perform expansion of the
-previously set environment variables -- you can of course create this
-file by yourself and fill in the details manually)
+previously set environment variables -- you can, of course, create
+this file by yourself and fill in the details manually)
 
 ``` shell
 $ perl -ne 's#%([^%]+)%#$ENV{"$1"}#e;print' > "hetzner.tf" <<'EOT'
@@ -349,7 +350,7 @@ data "external" "gpg" {
               "./hcloud-variables.json.gpg" ]
 }
 
-# Cloud provider specific configuration below:
+# Cloud provider-specific configuration below:
 
 provider "hcloud" {
   token       = "${data.external.gpg.result.hcloud_token}"
@@ -397,7 +398,6 @@ $ cat > "apply.sh" <<'EOT'
 #!/bin/bash
 
 TERRAFORM_VERSION="0.12.1"
-
 ACTION=(${@:-apply})
 
 set -eE
@@ -412,10 +412,10 @@ if [ ! -x ./terraform ] ; then
 fi
 
 LOCAL_STATE=".terraform/terraform.tfstate"
-rm -f "${LOCAL_STATE}" || true
+rm -f "${LOCAL_STATE}" 2>/dev/null || true
 ./terraform init -backend-config=<(gpg --batch --decrypt terraform-backend-variables.txt.gpg 2>/dev/null)
 time ./terraform "${ACTION[@]}"
-rm -f "${LOCAL_STATE}" || true
+rm -f "${LOCAL_STATE}" 2>/dev/null || true
 EOT
 $ 
 $ chmod +x apply.sh
